@@ -488,6 +488,7 @@ interface TestBinding {
   void promiseResolveNative(Promise<any> p, any value);
   void promiseRejectNative(Promise<any> p, any value);
   void promiseRejectWithTypeError(Promise<any> p, USVString message);
+  void resolvePromiseDelayed(Promise<any> p, DOMString value, unsigned long long ms);
 
   void panic();
 };
