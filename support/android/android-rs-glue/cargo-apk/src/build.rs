@@ -81,7 +81,10 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
 
     // Building the `android-artifacts` directory that will contain all the artifacts.
     let android_artifacts_dir = {
-        let target_dir = manifest_path.parent().unwrap().join("target");
+        let target_dir = match env::var("CARGO_TARGET_DIR") {
+            Ok(dir) => Path::new(&dir).to_owned(),
+            Err(_) => manifest_path.parent().unwrap().join("target"),
+        };
         target_dir.join("android-artifacts")
     };
     build_android_artifacts_dir(&android_artifacts_dir, &config);
