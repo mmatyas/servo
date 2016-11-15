@@ -340,6 +340,7 @@ fn build_java_src<'a, I>(path: &Path, config: &Config, libs: I)
 public class MainActivity extends android.app.NativeActivity {{
     static {{
         {libs}
+        System.loadLibrary("main");
     }}
 }}"#, libs = libs_string, package_name = config.project_name.replace("-", "_")).unwrap();
 }
