@@ -471,10 +471,13 @@ fn build_local_properties(path: &Path, config: &Config) {
     };
 
     if cfg!(target_os = "windows") {
-        write!(file, r"sdk.dir={}", abs_dir.to_str().unwrap().replace("\\", "\\\\")).unwrap();
+        writeln!(file, r"sdk.dir={}", abs_dir.to_str().unwrap().replace("\\", "\\\\")).unwrap();
     } else {
-        write!(file, r"sdk.dir={}", abs_dir.to_str().unwrap()).unwrap();
+        writeln!(file, r"sdk.dir={}", abs_dir.to_str().unwrap()).unwrap();
     }
+
+    // TODO: make build tools version configurable
+    writeln!(file, r"sdk.buildtools=23.0.3").unwrap();
 }
 
 fn build_project_properties(path: &Path, config: &Config) {
