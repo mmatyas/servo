@@ -163,23 +163,24 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
             .arg("-o").arg(build_target_dir.join("glue_obj.o"))
             .execute();
 
-        // Directory where we will put the native libraries for ant to pick them up.
-        let native_libraries_dir = {
-            let abi = if build_target.starts_with("arm") { "armeabi" }
-                      // TODO: armeabi-v7a
-                      else if build_target.starts_with("aarch64") { "arm64-v8a" }
-                      else if build_target.starts_with("i") { "x86" }
-                      else if build_target.starts_with("x86_64") { "x86_64" }
-                      else if build_target.starts_with("mips") { "mips" }
-                      // TODO: mips64
-                      else { panic!("Unknown or incompatible build target: {}", build_target) };
+        let abi = if build_target.starts_with("arm") { "armeabi" }
+                  // TODO: armeabi-v7a
+                  else if build_target.starts_with("aarch64") { "arm64-v8a" }
+                  else if build_target.starts_with("i") { "x86" }
+                  else if build_target.starts_with("x86_64") { "x86_64" }
+                  else if build_target.starts_with("mips") { "mips" }
+                  // TODO: mips64
+                  else { panic!("Unknown or incompatible build target: {}", build_target) };
 
-            android_artifacts_dir.join(format!("build/libs/{}", abi))
-        };
+        // Directory where we will put the native libraries for ant to pick them up.
+        let native_libraries_dir = android_artifacts_dir.join(format!("build/libs/{}", abi));
 
         if fs::metadata(&native_libraries_dir).is_err() {
             fs::DirBuilder::new().recursive(true).create(&native_libraries_dir).unwrap();
         }
+
+        // Location of the libc++ runtime
+        let libstdcpp_dir = config.ndk_path.join(format!("sources/cxx-stl/llvm-libc++/libs/{}", abi));
 
         // Compiling the crate thanks to `cargo rustc`. We set the linker to `linker_exe`, a hacky
         // linker that will tweak the options passed to `gcc`.
@@ -200,6 +201,7 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
             .env("CARGO_APK_LINKER_OUTPUT", native_libraries_dir.join("libmain.so"))
             .env("CARGO_APK_LIB_PATHS_OUTPUT", build_target_dir.join("lib_paths"))
             .env("CARGO_APK_LIBS_OUTPUT", build_target_dir.join("libs"))
+            .env("CARGO_APK_LIBCPP_DIR", libstdcpp_dir)
             .env("TARGET_CC", gcc_path.as_os_str())          // Used by gcc-rs
             .env("TARGET_AR", ar_path.as_os_str())          // Used by gcc-rs
             .env("TARGET_CFLAGS", &format!("--sysroot {}", gcc_sysroot.to_string_lossy())) // Used by gcc-rs

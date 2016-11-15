@@ -22,6 +22,7 @@ fn main() {
     let linker_output = env::var("CARGO_APK_LINKER_OUTPUT").unwrap();
     let lib_paths_output = env::var("CARGO_APK_LIB_PATHS_OUTPUT").unwrap();
     let libs_output = env::var("CARGO_APK_LIBS_OUTPUT").unwrap();
+    let libcpp_dir = env::var("CARGO_APK_LIBCPP_DIR").unwrap();
 
     // Write the arguments for the subcommand to pick up.
     {
@@ -36,6 +37,8 @@ fn main() {
         }
     }
 
+    println!("libcpp {:?}", libcpp_dir);
+
     // Execute the real linker.
     if Command::new(Path::new(&gcc))
         .args(&*passthrough)
@@ -43,6 +46,7 @@ fn main() {
         .arg(glue_obj)
         .arg(glue_lib)
         .arg("-llog").arg("-landroid")      // these two libraries are used by the injected-glue
+        .arg("-L").arg(libcpp_dir).arg("-lc++") // required by Servo
         .arg("--sysroot").arg(gcc_sysroot)
         .arg("-o").arg(linker_output)
         .arg("-shared")
