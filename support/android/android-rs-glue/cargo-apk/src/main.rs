@@ -31,10 +31,6 @@ fn main() {
 
 /// Returns the path of the `Cargo.toml` that we want to build.
 fn current_manifest_path() -> PathBuf {
-    if let Ok(dir) = env::var("CARGO_TARGET_DIR") {
-        return Path::new(&dir).to_owned();
-    }
-
     let output = Command::new("cargo").arg("locate-project").output().unwrap();
 
     if !output.status.success() {
