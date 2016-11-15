@@ -225,8 +225,11 @@ class MachCommands(CommandBase):
         if with_debug_assertions:
             env["RUSTFLAGS"] = "-C debug_assertions"
 
+        cargo_binary = "cargo" + BIN_SUFFIX
+
         if android:
-            # Build OpenSSL for android
+            if verbose:
+                print('Building `openssl`')
             make_cmd = ["make"]
             if jobs is not None:
                 make_cmd += ["-j" + jobs]
@@ -248,6 +251,24 @@ class MachCommands(CommandBase):
             env['OPENSSL_LIB_DIR'] = openssl_dir
             env['OPENSSL_INCLUDE_DIR'] = path.join(openssl_dir, "include")
             env['OPENSSL_STATIC'] = 'TRUE'
+
+            if verbose:
+                print('Building `cargo-apk`')
+            env["CARGO_TARGET_DIR"] = path.join(self.context.topdir, "target")
+            if "ANDROID_SDK" in env:
+                env["ANDROID_HOME"] = env["ANDROID_SDK"]
+            if "ANDROID_NDK" in env:
+                env["NDK_HOME"] = env["ANDROID_NDK"]
+
+            android_support_dir = self.android_support_dir()
+            cargoapk_dir = path.join(android_support_dir, "android-rs-glue", "cargo-apk")
+#            status = call(
+#                [cargo_binary, "clean"],
+#                cwd=cargoapk_dir, verbose=verbose)
+            status = call(
+                [cargo_binary, "build", "--release"],
+                cwd=cargoapk_dir, verbose=verbose)
+
             # Android builds also require having the gcc bits on the PATH and various INCLUDE
             # path munging if you do not want to install a standalone NDK. See:
             # https://dxr.mozilla.org/mozilla-central/source/build/autoconf/android.m4#139-161
@@ -279,15 +300,22 @@ class MachCommands(CommandBase):
                 "-I" + cxx_include,
                 "-I" + cxxabi_include])
 
-        cargo_binary = "cargo" + BIN_SUFFIX
+            if verbose:
+                print('Building `servo`')
+            cargoapk_binary = "cargo-apk" + BIN_SUFFIX
+            cargoapk_binary = path.join(cargoapk_dir, "target", "release", cargoapk_binary)
+            status = call(
+                [cargoapk_binary, "build", "--verbose", "--bin", "servo"] + opts,
+                env=env, cwd=self.servo_crate(), verbose=verbose)
+        else:
+            if sys.platform in ("win32", "msys"):
+                if "msvc" not in host_triple():
+                    env[b'RUSTFLAGS'] = b'-C link-args=-Wl,--subsystem,windows'
 
-        if sys.platform in ("win32", "msys"):
-            if "msvc" not in host_triple():
-                env[b'RUSTFLAGS'] = b'-C link-args=-Wl,--subsystem,windows'
+            status = call(
+                [cargo_binary, "dummy", "build"] + opts,
+                env=env, cwd=self.servo_crate(), verbose=verbose)
 
-        status = call(
-            [cargo_binary, "build"] + opts,
-            env=env, cwd=self.servo_crate(), verbose=verbose)
         elapsed = time() - build_start
 
         # Do some additional things if the build succeeded
