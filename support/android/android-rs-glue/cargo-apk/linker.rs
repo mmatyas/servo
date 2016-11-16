@@ -30,15 +30,16 @@ fn main() {
         for lib_path in args.library_path.iter() {
             writeln!(lib_paths, "{}", lib_path.to_string_lossy()).unwrap();
         }
+        writeln!(lib_paths, "{}", libcpp_dir).unwrap(); // required by Servo
 
         let mut libs = File::create(Path::new(&libs_output)).unwrap();
         for lib in args.shared_libraries.iter() {
             writeln!(libs, "{}", lib).unwrap();
         }
-        writeln!(libs, "blurdroid.jar").unwrap(); // required by Servo
+        // required by Servo
+        writeln!(libs, "libc++_shared.so").unwrap();
+        writeln!(libs, "blurdroid.jar").unwrap();
     }
-
-    println!("libcpp {:?}", libcpp_dir);
 
     // Execute the real linker.
     if Command::new(Path::new(&gcc))
