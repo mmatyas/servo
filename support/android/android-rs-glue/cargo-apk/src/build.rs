@@ -175,8 +175,9 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
                   // TODO: mips64
                   else { panic!("Unknown or incompatible build target: {}", build_target) };
 
-        // Directory where we will put the native libraries for ant to pick them up.
-        let native_libraries_dir = android_artifacts_dir.join(format!("build/libs/{}", abi));
+        // Directory where we will put the libraries for ant to pick them up.
+        let jni_libraries_dir = android_artifacts_dir.join("build/libs");
+        let native_libraries_dir = jni_libraries_dir.join(format!("{}", abi));
 
         if fs::metadata(&native_libraries_dir).is_err() {
             fs::DirBuilder::new().recursive(true).create(&native_libraries_dir).unwrap();
@@ -244,6 +245,9 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
                                 {
                                     shared_objects_to_load.push(filename.to_owned());
                                     fs::copy(&path, native_libraries_dir.join(filename)).unwrap();
+                                }
+                                if ext == "jar" && libs_list.contains(filename) {
+                                    fs::copy(&path, jni_libraries_dir.join(filename)).unwrap();
                                 }
                             }
                             _ => {}

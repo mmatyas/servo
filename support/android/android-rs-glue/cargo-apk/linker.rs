@@ -35,6 +35,7 @@ fn main() {
         for lib in args.shared_libraries.iter() {
             writeln!(libs, "{}", lib).unwrap();
         }
+        writeln!(libs, "blurdroid.jar").unwrap(); // required by Servo
     }
 
     println!("libcpp {:?}", libcpp_dir);
