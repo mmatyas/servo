@@ -247,15 +247,6 @@ fn args() -> Vec<String> {
 }
 
 
-// This extern definition ensures that the linker will not discard
-// the static native lib bits, which are brought in from the NDK libraries
-// we link in from build.rs.
-#[cfg(target_os = "android")]
-extern {
-    fn app_dummy() -> libc::c_void;
-}
-
-
 #[cfg(target_os = "android")]
 mod android {
     extern crate android_glue;
@@ -271,8 +262,6 @@ mod android {
         //env::set_var("RUST_LOG", "servo,gfx,msg,util,layers,js,std,rt,extra");
         redirect_output(STDERR_FILENO);
         redirect_output(STDOUT_FILENO);
-
-        unsafe { super::app_dummy(); }
     }
 
     struct FilePtr(*mut self::libc::FILE);
