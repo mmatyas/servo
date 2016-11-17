@@ -330,90 +330,19 @@ fn build_linker(path: &Path) {
 fn build_java_src<'a, I>(path: &Path, config: &Config, libs: I)
     where I: Iterator<Item = &'a str>
 {
-    let file = path.join("build/src/rust").join(config.project_name.replace("-", "_"))
-                   .join("MainActivity.java");
-    fs::create_dir_all(file.parent().unwrap()).unwrap();
-    //if fs::metadata(&file).is_ok() { return; }
-    let mut file = File::create(&file).unwrap();
-
-    let mut libs_string = String::new();
-    for name in libs {
-        // Strip off the 'lib' prefix and ".so" suffix.
-        let line = format!("        System.loadLibrary(\"{}\");\n",
-            name.trim_left_matches("lib").trim_right_matches(".so"));
-        libs_string.push_str(&*line);
+    let src_path = path.join("../../support/android/apk/src");
+    let dst_path = path.join("build/src");
+    if !dst_path.exists() {
+        create_dir_symlink(&src_path, &dst_path).expect("Can not create symlink to src");
     }
-
-    write!(file, r#"package rust.{package_name};
-
-public class MainActivity extends android.app.NativeActivity {{
-    static {{
-        {libs}
-        System.loadLibrary("main");
-    }}
-}}"#, libs = libs_string, package_name = config.project_name.replace("-", "_")).unwrap();
 }
 
 fn build_manifest(path: &Path, config: &Config) {
-    let file = path.join("build/AndroidManifest.xml");
-    //if fs::metadata(&file).is_ok() { return; }
-    let mut file = File::create(&file).unwrap();
-
-    // Building application attributes
-    let application_attrs = format!(r#"
-            android:label="{0}"{1}{2}{3}"#,
-        config.package_label,
-        config.package_icon.as_ref().map_or(String::new(), |a| format!(r#"
-            android:icon="{}""#, a)),
-        if config.fullscreen { r#"
-            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen""#
-        } else { "" },
-        config.application_attributes.as_ref().map_or(String::new(), |a| a.replace("\n","\n            "))
-    );
-
-    // Buidling activity attributes
-    let activity_attrs = format!(r#"
-                android:name="rust.{1}.MainActivity"
-                android:label="{0}"
-                android:configChanges="orientation|keyboardHidden|screenSize" {2}"#,
-        config.package_label,
-        config.project_name.replace("-", "_"),
-        config.activity_attributes.as_ref().map_or(String::new(), |a| a.replace("\n","\n                "))
-    );
-
-    // Write final AndroidManifest
-    write!(
-        file, r#"<?xml version="1.0" encoding="utf-8"?>
-<!-- BEGIN_INCLUDE(manifest) -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-        package="{0}"
-        android:versionCode="1"
-        android:versionName="1.0">
-
-    <uses-sdk android:minSdkVersion="9" />
-
-    <uses-feature android:glEsVersion="{1}" android:required="true"></uses-feature>
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-
-    <application {2} >
-        <activity {3} >
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
-
-</manifest>
-<!-- END_INCLUDE(manifest) -->
-"#,
-        config.package_name,
-        format!("0x{:04}{:04}", 2, 0), //TODO: get opengl es version from somewhere
-        application_attrs,
-        activity_attrs
-    );
+    let src_path = path.join("../../support/android/apk/AndroidManifest.xml");
+    let dst_path = path.join("build/AndroidManifest.xml");
+    if !dst_path.exists() {
+        create_file_symlink(&src_path, &dst_path).expect("Can not create symlink to AndroidManifest.xml");
+    }
 }
 
 fn build_assets(path: &Path, config: &Config) {
@@ -445,6 +374,16 @@ fn create_dir_symlink(src_path: &Path, dst_path: &Path) -> io::Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 fn create_dir_symlink(src_path: &Path, dst_path: &Path) -> io::Result<()> {
+    os::unix::fs::symlink(&src_path, &dst_path)
+}
+
+#[cfg(target_os = "windows")]
+fn create_file_symlink(src_path: &Path, dst_path: &Path) -> io::Result<()> {
+    os::windows::fs::symlink_dir(&src_path, &dst_path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_file_symlink(src_path: &Path, dst_path: &Path) -> io::Result<()> {
     os::unix::fs::symlink(&src_path, &dst_path)
 }
 
