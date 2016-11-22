@@ -1,5 +1,5 @@
 use std::os;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -89,6 +89,8 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
     };
     build_android_artifacts_dir(&android_artifacts_dir, &config);
 
+    let mut abi_libs: HashMap<&str, Vec<String>> = HashMap::new();
+
     for build_target in config.build_targets.iter() {
         let build_target_dir = android_artifacts_dir.join(build_target);
 
@@ -107,8 +109,18 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
                        // TODO: mips64
                        else { panic!("Unknown or incompatible build target: {}", build_target) };
 
+            // Looks like the tools don't always share the prefix of the target arch
+            // Just a macos issue?
+            let tool_prefix = if build_target.starts_with("arm") { "arm-linux-androideabi" }
+                       else if build_target.starts_with("aarch64") { "aarch64-linux-android" }
+                       else if build_target.starts_with("i") { "i686-linux-android" }
+                       else if build_target.starts_with("x86_64") { "x86_64-linux-android" }
+                       else if build_target.starts_with("mipsel") { "mipsel-linux-android" }
+                       // TODO: mips64
+                       else { panic!("Unknown or incompatible build target: {}", build_target) };
+
             let base = config.ndk_path.join(format!("toolchains/{}-4.9/prebuilt/{}-x86_64", target_arch, host_os));
-            (base.join(format!("bin/{}-gcc", target_arch)), base.join(format!("bin/{}-ar", target_arch)))
+            (base.join(format!("bin/{}-gcc", tool_prefix)), base.join(format!("bin/{}-ar", tool_prefix)))
         };
 
         let gcc_sysroot = {
@@ -122,6 +134,16 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
             config.ndk_path.join(format!("platforms/android-{v}/arch-{a}",
                                          v = config.android_version, a = arch))
         };
+
+        // Create android cpu abi name
+        let abi = if build_target.starts_with("arm") { "armeabi" }
+                  // TODO: armeabi-v7a
+                  else if build_target.starts_with("aarch64") { "arm64-v8a" }
+                  else if build_target.starts_with("i") { "x86" }
+                  else if build_target.starts_with("x86_64") { "x86_64" }
+                  else if build_target.starts_with("mips") { "mips" }
+                  // TODO: mips64
+                  else { panic!("Unknown or incompatible build target: {}", build_target) };
 
         // Compiling android_native_app_glue.c
         TermCmd::new("Compiling android_native_app_glue.c", &gcc_path)
@@ -261,11 +283,11 @@ pub fn build(manifest_path: &Path, config: &Config) -> BuildResult {
             shared_objects_to_load
         };
 
-        // Write the Java source
-        // FIXME: duh, the file will be replaced every time, so this only works with one target
-        build_java_src(&android_artifacts_dir, &config,
-                       shared_objects_to_load.iter().map(|s| &**s));
+        abi_libs.insert(abi, shared_objects_to_load);
     }
+
+    // Write the Java source
+    build_java_src(&android_artifacts_dir, &config, &abi_libs);
 
     // Invoking `ant` from within `android-artifacts` in order to compile the project.
     TermCmd::new("Invoking ant", &config.ant_command)
@@ -327,8 +349,7 @@ fn build_linker(path: &Path) {
     assert!(fs::metadata(&exe_file).is_ok());
 }
 
-fn build_java_src<'a, I>(path: &Path, config: &Config, libs: I)
-    where I: Iterator<Item = &'a str>
+fn build_java_src(path: &Path, config: &Config, abi_libs: &HashMap<&str, Vec<String>>)
 {
     let src_path = path.join("../../support/android/apk/src");
     let dst_path = path.join("build/src");
@@ -398,6 +419,7 @@ fn build_build_xml(path: &Path, config: &Config) {
     <loadproperties srcFile="project.properties" />
     <import file="custom_rules.xml" optional="true" />
     <import file="${{sdk.dir}}/tools/ant/build.xml" />
+
 </project>
 "#, project_name = config.project_name).unwrap()
 }
