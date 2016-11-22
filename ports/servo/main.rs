@@ -15,11 +15,13 @@
 //!
 //! [glutin]: https://github.com/tomaka/glutin
 
+
+
 #![feature(start, core_intrinsics)]
 
 #[cfg(target_os = "android")]
 #[macro_use]
-extern crate android_glue;
+//extern crate android_glue;
 extern crate backtrace;
 // The window backed by glutin
 extern crate glutin_app as app;
@@ -83,6 +85,7 @@ fn install_crash_handler() {
 }
 
 fn main() {
+    println!("Hello World!");
     install_crash_handler();
 
     // Parse the command line options and store them globally
@@ -197,7 +200,6 @@ impl app::NestedEventLoopListener for BrowserWrapper {
 
 #[cfg(target_os = "android")]
 fn setup_logging() {
-    android::setup_logging();
 }
 
 #[cfg(not(target_os = "android"))]
@@ -244,57 +246,4 @@ fn args() -> Vec<String> {
 fn args() -> Vec<String> {
     use std::env;
     env::args().collect()
-}
-
-
-#[cfg(target_os = "android")]
-mod android {
-    extern crate android_glue;
-    extern crate libc;
-
-    use self::libc::c_int;
-    use std::borrow::ToOwned;
-
-    pub fn setup_logging() {
-        use self::libc::{STDERR_FILENO, STDOUT_FILENO};
-        //use std::env;
-
-        //env::set_var("RUST_LOG", "servo,gfx,msg,util,layers,js,std,rt,extra");
-        redirect_output(STDERR_FILENO);
-        redirect_output(STDOUT_FILENO);
-    }
-
-    struct FilePtr(*mut self::libc::FILE);
-
-    unsafe impl Send for FilePtr {}
-
-    fn redirect_output(file_no: c_int) {
-        use self::libc::{pipe, dup2};
-        use self::libc::fdopen;
-        use self::libc::fgets;
-        use servo::util::thread::spawn_named;
-        use std::ffi::CStr;
-        use std::ffi::CString;
-        use std::str::from_utf8;
-
-        unsafe {
-            let mut pipes: [c_int; 2] = [ 0, 0 ];
-            pipe(pipes.as_mut_ptr());
-            dup2(pipes[1], file_no);
-            let mode = CString::new("r").unwrap();
-            let input_file = FilePtr(fdopen(pipes[0], mode.as_ptr()));
-            spawn_named("android-logger".to_owned(), move || {
-                static READ_SIZE: usize = 1024;
-                let mut read_buffer = vec![0; READ_SIZE];
-                let FilePtr(input_file) = input_file;
-                loop {
-                    fgets(read_buffer.as_mut_ptr(), (read_buffer.len() as i32)-1, input_file);
-                    let c_str = CStr::from_ptr(read_buffer.as_ptr());
-                    let slice = from_utf8(c_str.to_bytes()).unwrap();
-                    android_glue::write_log(slice);
-                }
-            });
-        }
-    }
-
 }
