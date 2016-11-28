@@ -248,14 +248,6 @@ fn args() -> Vec<String> {
     env::args().collect()
 }
 
-// This extern definition ensures that the linker will not discard
-// the static native lib bits, which are brought in from the NDK libraries
-// we link in from build.rs.
-#[cfg(target_os = "android")]
-extern {
-    fn app_dummy() -> libc::c_void;
-}
-
 #[cfg(target_os = "android")]
 #[no_mangle]
 #[inline(never)]
@@ -268,6 +260,7 @@ pub extern "C" fn android_main(app: *mut ()) {
 #[cfg(target_os = "android")]
 mod android {
     extern crate android_glue;
+    extern crate android_injected_glue;
     extern crate libc;
 
     use self::libc::c_int;
@@ -281,7 +274,7 @@ mod android {
         redirect_output(STDERR_FILENO);
         redirect_output(STDOUT_FILENO);
 
-        unsafe { super::app_dummy(); }
+        unsafe { android_injected_glue::ffi::app_dummy() };
     }
 
     struct FilePtr(*mut self::libc::FILE);
