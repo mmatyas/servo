@@ -70,7 +70,7 @@ impl GLContextFactory {
             GLContextFactory::Native(ref _handle, ref _dispatcher, ref api_type) => {
                 #[cfg(target_os = "macos")]
                 {
-                    if opts::get().with_io_surface {
+                    if opts::get().with_native_surfaces {
                         return GLContext::new_shared_with_dispatcher(
                             // FIXME(nox): Why are those i32 values?
                             size.to_i32(),
@@ -82,6 +82,23 @@ impl GLContextFactory {
                             None,
                         )
                         .map(|ctx| GLContextWrapper::NativeWithIOSurface(ctx));
+                    }
+                }
+                #[cfg(target_os = "android")]
+                {
+                    if opts::get().with_native_surfaces {
+                        return GLContext::new_shared_with_dispatcher(
+                            // FIXME(nox): Why are those i32 values?
+                            size.to_i32(),
+                            attributes,
+                            // TODO ColorAttachmentType::AndroidSurface,
+                            ColorAttachmentType::Texture,
+                            *api_type,
+                            Self::gl_version(webgl_version),
+                            None,
+                            None,
+                        )
+                        .map(|ctx| GLContextWrapper::NativeWithAndroidSurface(ctx));
                     }
                 }
                 GLContextWrapper::Native(GLContext::new_shared_with_dispatcher(
@@ -162,6 +179,8 @@ pub enum GLContextWrapper {
     OSMesa(GLContext<OSMesaContext>),
     #[cfg(target_os = "macos")]
     NativeWithIOSurface(GLContext<NativeGLContext>),
+    #[cfg(target_os = "android")]
+    NativeWithAndroidSurface(GLContext<NativeGLContext>),
 }
 
 impl GLContextWrapper {
@@ -175,6 +194,10 @@ impl GLContextWrapper {
             },
             #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref ctx) => {
+                ctx.make_current().unwrap();
+            },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
                 ctx.make_current().unwrap();
             },
         }
@@ -197,6 +220,10 @@ impl GLContextWrapper {
             GLContextWrapper::NativeWithIOSurface(ref ctx) => {
                 WebGLImpl::apply(ctx, state, cmd, backtrace);
             },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
+                WebGLImpl::apply(ctx, state, cmd, backtrace);
+            },
         }
     }
 
@@ -206,6 +233,8 @@ impl GLContextWrapper {
             GLContextWrapper::OSMesa(ref ctx) => ctx.gl(),
             #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref ctx) => ctx.gl(),
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => ctx.gl(),
         }
     }
 
@@ -254,6 +283,23 @@ impl GLContextWrapper {
 
                 (real_size, texture_id, io_surface_id, map_limits(limits))
             },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
+                let (real_size, texture_id, android_surface_id) = {
+                    let draw_buffer = ctx.borrow_draw_buffer().unwrap();
+                    (
+                        draw_buffer.size(),
+                        draw_buffer.get_bound_texture_id().unwrap(),
+                        // TODO
+                        // draw_buffer.get_active_android_surface_id(),
+                        None,
+                    )
+                };
+
+                let limits = ctx.borrow_limits().clone();
+
+                (real_size, texture_id, android_surface_id, map_limits(limits))
+            },
         }
     }
 
@@ -262,6 +308,18 @@ impl GLContextWrapper {
             #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref ctx) => {
                 ctx.borrow_draw_buffer().unwrap().get_active_io_surface_id()
+            },
+            _ => None,
+        }
+    }
+
+    pub fn get_active_android_surface_id(&self) -> Option<u32> {
+        match *self {
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
+                // TODO
+                //ctx.borrow_draw_buffer().unwrap().get_active_android_surface_id()
+                None
             },
             _ => None,
         }
@@ -279,6 +337,11 @@ impl GLContextWrapper {
             GLContextWrapper::NativeWithIOSurface(ref mut ctx) => {
                 ctx.swap_draw_buffer(_clear_color, _mask)
             },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => {
+                // TODO
+                None
+            },
             _ => None,
         }
     }
@@ -287,6 +350,9 @@ impl GLContextWrapper {
         match *self {
             #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref mut ctx) => ctx.handle_lock(),
+            // TODO
+            //#[cfg(target_os = "android")]
+            //GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => ctx.handle_lock(),
             _ => None,
         }
     }
@@ -303,6 +369,11 @@ impl GLContextWrapper {
             },
             #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref mut ctx) => {
+                // FIXME(nox): Why are those i32 values?
+                ctx.resize(size.to_i32())
+            },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => {
                 // FIXME(nox): Why are those i32 values?
                 ctx.resize(size.to_i32())
             },

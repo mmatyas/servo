@@ -235,8 +235,8 @@ pub struct Opts {
     /// Only shutdown once all theads are finished.
     pub clean_shutdown: bool,
 
-    /// Use IOSurfaces for texture sharing for WebGL on macOS
-    pub with_io_surface: bool,
+    /// Use IOSurfaces or AndroidSurfaces for WebGL texture sharing on macOS and Android.
+    pub with_native_surfaces: bool,
 }
 
 fn print_usage(app: &str, opts: &Options) {
@@ -613,7 +613,7 @@ pub fn default_opts() -> Opts {
         unminify_js: false,
         print_pwm: false,
         clean_shutdown: false,
-        with_io_surface: false,
+        with_native_surfaces: false,
     }
 }
 
@@ -786,6 +786,11 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
         "",
         "io-surface",
         "Use IOSurfaces for WebGL to share textures with WebRender (macOS-only)",
+    );
+    opts.optflag(
+        "",
+        "android-surface",
+        "Use AndroidSurfaces for WebGL to share textures with WebRender (Android-only)",
     );
 
     let opt_match = match opts.parse(args) {
@@ -1001,6 +1006,10 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     let enable_subpixel_text_antialiasing =
         !debug_options.disable_subpixel_aa && pref!(gfx.subpixel_text_antialiasing.enabled);
 
+    let with_native_surfaces =
+        (cfg!(target_os = "macos") && opt_match.opt_present("io-surface")) ||
+        (cfg!(target_os = "android") && opt_match.opt_present("android-surface"));
+
     let is_printing_version = opt_match.opt_present("v") || opt_match.opt_present("version");
 
     let opts = Opts {
@@ -1065,7 +1074,7 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
         unminify_js: opt_match.opt_present("unminify-js"),
         print_pwm: opt_match.opt_present("print-pwm"),
         clean_shutdown: opt_match.opt_present("clean-shutdown"),
-        with_io_surface: opt_match.opt_present("io-surface"),
+        with_native_surfaces: with_native_surfaces,
     };
 
     set_options(opts);

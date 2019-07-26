@@ -896,7 +896,7 @@ impl WindowMethods for Window {
         self.Document()
             .request_animation_frame(AnimationFrameCallback::FrameRequestCallback {
                 callback,
-                webgl_chan: if cfg!(target_os = "macos") && opts::get().with_io_surface {
+                webgl_chan: if opts::get().with_native_surfaces {
                     self.webgl_chan()
                 } else {
                     None

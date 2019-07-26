@@ -41,7 +41,8 @@ pub struct WebGLCommandBacktrace {
 pub struct WebGLLockMessage {
     pub texture_id: u32,
     pub size: Size2D<i32>,
-    pub io_surface_id: Option<u32>,
+    #[cfg(any(target_os = "macos", target_os = "android"))]
+    pub native_surface_id: Option<u32>,
     pub gl_sync: usize,
     pub alpha: bool,
 }

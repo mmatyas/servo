@@ -21,7 +21,8 @@ use webrender_traits::{WebrenderExternalImageApi, WebrenderExternalImageRegistry
 /// WebGL Threading API entry point that lives in the constellation.
 pub struct WebGLThreads(WebGLSender<WebGLMsg>);
 
-type IOSurfaceId = u32;
+#[cfg(target_os = "macos")]
+type IoSurfaceId = u32;
 
 impl WebGLThreads {
     /// Creates a new WebGLThreads object
@@ -78,7 +79,8 @@ struct WebGLExternalImages {
     webrender_gl: Rc<dyn gl::Gl>,
     webgl_channel: WebGLSender<WebGLMsg>,
     // Mapping between an IOSurface and the texture it is bound on the WR thread
-    textures: FnvHashMap<IOSurfaceId, gl::GLuint>,
+    #[cfg(target_os = "macos")]
+    textures: FnvHashMap<IoSurfaceId, gl::GLuint>,
     // Used to avoid creating a new channel on each received WebRender request.
     lock_channel: (
         WebGLSender<WebGLLockMessage>,
@@ -86,6 +88,7 @@ struct WebGLExternalImages {
     ),
 }
 
+#[cfg(any(target_os = "macos", target_os = "android"))]
 impl Drop for WebGLExternalImages {
     fn drop(&mut self) {
         for (_, texture_id) in &self.textures {
@@ -99,7 +102,10 @@ impl WebGLExternalImages {
         Self {
             webrender_gl,
             webgl_channel: channel,
+
+            #[cfg(any(target_os = "macos", target_os = "android"))]
             textures: Default::default(),
+
             lock_channel: webgl_channel().unwrap(),
         }
     }
