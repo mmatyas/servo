@@ -15,6 +15,8 @@ use offscreen_gl_context::{
 use offscreen_gl_context::{GLLimits as RawGLLimits, GLVersion};
 use offscreen_gl_context::{NativeGLContext, NativeGLContextHandle, NativeGLContextMethods};
 use offscreen_gl_context::{OSMesaContext, OSMesaContextHandle};
+#[cfg(target_os = "android")]
+use offscreen_gl_context::AndroidSurface;
 use servo_config::opts;
 
 pub trait CloneableDispatcher: GLContextDispatcher {
@@ -91,8 +93,7 @@ impl GLContextFactory {
                             // FIXME(nox): Why are those i32 values?
                             size.to_i32(),
                             attributes,
-                            // TODO ColorAttachmentType::AndroidSurface,
-                            ColorAttachmentType::Texture,
+                            ColorAttachmentType::AndroidSurface,
                             *api_type,
                             Self::gl_version(webgl_version),
                             None,
@@ -238,6 +239,7 @@ impl GLContextWrapper {
         }
     }
 
+    #[cfg(target_os = "macos")]
     pub fn get_info(&self) -> (Size2D<i32>, u32, Option<u32>, GLLimits) {
         match *self {
             GLContextWrapper::Native(ref ctx) => {
@@ -283,22 +285,57 @@ impl GLContextWrapper {
 
                 (real_size, texture_id, io_surface_id, map_limits(limits))
             },
-            #[cfg(target_os = "android")]
-            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
-                let (real_size, texture_id, android_surface_id) = {
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn get_info(&self) -> (Size2D<i32>, u32, Option<AndroidSurface>, GLLimits) {
+        match *self {
+            GLContextWrapper::Native(ref ctx) => {
+                let (real_size, texture_id) = {
                     let draw_buffer = ctx.borrow_draw_buffer().unwrap();
                     (
                         draw_buffer.size(),
                         draw_buffer.get_bound_texture_id().unwrap(),
-                        // TODO
-                        // draw_buffer.get_active_android_surface_id(),
-                        None,
                     )
                 };
 
                 let limits = ctx.borrow_limits().clone();
 
-                (real_size, texture_id, android_surface_id, map_limits(limits))
+                (real_size, texture_id, None, map_limits(limits))
+            },
+            GLContextWrapper::OSMesa(ref ctx) => {
+                let (real_size, texture_id) = {
+                    let draw_buffer = ctx.borrow_draw_buffer().unwrap();
+                    (
+                        draw_buffer.size(),
+                        draw_buffer.get_bound_texture_id().unwrap(),
+                    )
+                };
+
+                let limits = ctx.borrow_limits().clone();
+
+                (real_size, texture_id, None, map_limits(limits))
+            },
+            #[cfg(target_os = "android")]
+            GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
+                let (real_size, texture_id, android_surface) = {
+                    let draw_buffer = ctx.borrow_draw_buffer().unwrap();
+                    (
+                        draw_buffer.size(),
+                        draw_buffer.get_bound_texture_id().unwrap(),
+                        draw_buffer.get_active_android_surface(),
+                    )
+                };
+
+                let limits = ctx.borrow_limits().clone();
+
+                /*let android_surface = match android_surface {
+                    Some(surf) => Some(surf as u32),
+                    None => None,
+                };*/
+
+                (real_size, texture_id, android_surface, map_limits(limits))
             },
         }
     }
@@ -313,13 +350,11 @@ impl GLContextWrapper {
         }
     }
 
-    pub fn get_active_android_surface_id(&self) -> Option<u32> {
+    pub fn get_active_android_surface(&self) -> Option<AndroidSurface> {
         match *self {
             #[cfg(target_os = "android")]
             GLContextWrapper::NativeWithAndroidSurface(ref ctx) => {
-                // TODO
-                //ctx.borrow_draw_buffer().unwrap().get_active_android_surface_id()
-                None
+                ctx.borrow_draw_buffer().unwrap().get_active_android_surface()
             },
             _ => None,
         }
@@ -327,32 +362,46 @@ impl GLContextWrapper {
 
     /// Swap the backing texture for the draw buffer, returning the id of the IOsurface
     /// now used for reading.
+    #[cfg(target_os = "macos")]
     pub fn swap_draw_buffer(
         &mut self,
         _clear_color: (f32, f32, f32, f32),
         _mask: u32,
     ) -> Option<u32> {
         match *self {
-            #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref mut ctx) => {
                 ctx.swap_draw_buffer(_clear_color, _mask)
-            },
-            #[cfg(target_os = "android")]
-            GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => {
-                // TODO
-                None
             },
             _ => None,
         }
     }
 
+    #[cfg(target_os = "android")]
+    pub fn swap_draw_buffer(
+        &mut self,
+        _clear_color: (f32, f32, f32, f32),
+        _mask: u32,
+    ) -> Option<AndroidSurface> {
+        match *self {
+            GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => {
+                ctx.swap_draw_buffer(_clear_color, _mask)
+            },
+            _ => None,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
     pub fn handle_lock(&mut self) -> Option<u32> {
         match *self {
-            #[cfg(target_os = "macos")]
             GLContextWrapper::NativeWithIOSurface(ref mut ctx) => ctx.handle_lock(),
-            // TODO
-            //#[cfg(target_os = "android")]
-            //GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => ctx.handle_lock(),
+            _ => None,
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn handle_lock(&mut self) -> Option<AndroidSurface> {
+        match *self {
+            GLContextWrapper::NativeWithAndroidSurface(ref mut ctx) => ctx.handle_lock(),
             _ => None,
         }
     }

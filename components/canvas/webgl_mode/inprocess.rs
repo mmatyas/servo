@@ -13,6 +13,8 @@ use fnv::FnvHashMap;
 use gleam::gl;
 #[cfg(target_os = "macos")]
 use io_surface;
+#[cfg(target_os = "android")]
+use offscreen_gl_context::AndroidSurface;
 use servo_config::pref;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -22,7 +24,7 @@ use webrender_traits::{WebrenderExternalImageApi, WebrenderExternalImageRegistry
 pub struct WebGLThreads(WebGLSender<WebGLMsg>);
 
 #[cfg(target_os = "macos")]
-type IoSurfaceId = u32;
+type IOSurfaceId = u32;
 
 impl WebGLThreads {
     /// Creates a new WebGLThreads object
@@ -80,7 +82,9 @@ struct WebGLExternalImages {
     webgl_channel: WebGLSender<WebGLMsg>,
     // Mapping between an IOSurface and the texture it is bound on the WR thread
     #[cfg(target_os = "macos")]
-    textures: FnvHashMap<IoSurfaceId, gl::GLuint>,
+    textures: FnvHashMap<IOSurfaceId, gl::GLuint>,
+    #[cfg(target_os = "android")]
+    textures: FnvHashMap<AndroidSurface, gl::GLuint>,
     // Used to avoid creating a new channel on each received WebRender request.
     lock_channel: (
         WebGLSender<WebGLLockMessage>,
@@ -124,7 +128,10 @@ impl WebrenderExternalImageApi for WebGLExternalImages {
         let WebGLLockMessage {
             texture_id,
             size,
+            #[cfg(target_os = "macos")]
             io_surface_id,
+            #[cfg(target_os = "android")]
+            android_surface,
             gl_sync,
             alpha,
         } = self.lock_channel.1.recv().unwrap();
@@ -132,6 +139,7 @@ impl WebrenderExternalImageApi for WebGLExternalImages {
         // If we have a new IOSurface bind it to a new texture on the WR thread,
         // or if it's already bound use that texture.
         // In the case of IOsurfaces we send these textures to WR.
+        #[cfg(target_os = "macos")]
         let texture_id = match io_surface_id {
             Some(_io_surface_id) => {
                 #[cfg(target_os = "macos")]
@@ -155,6 +163,27 @@ impl WebrenderExternalImageApi for WebGLExternalImages {
                 texture_id
             },
         };
+
+
+
+        #[cfg(target_os = "android")]
+        let texture_id = match android_surface {
+            Some(_android_surface) => {
+                let gl = &self.webrender_gl;
+                let texture_id = 0; // TODO
+                texture_id
+            },
+            None => {
+                // The next glWaitSync call is run on the WR thread and it's used to synchronize the two
+                // flows of OpenGL commands in order to avoid WR using a semi-ready WebGL texture.
+                // glWaitSync doesn't block WR thread, it affects only internal OpenGL subsystem.
+                self.webrender_gl
+                    .wait_sync(gl_sync as gl::GLsync, 0, gl::TIMEOUT_IGNORED);
+                texture_id
+            },
+        };
+
+
 
         (texture_id, size)
     }

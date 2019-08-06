@@ -11,12 +11,13 @@ use gleam::gl;
 use half::f16;
 use ipc_channel::ipc::IpcSender;
 use offscreen_gl_context::{DrawBuffer, GLContext, NativeGLContextMethods};
+
+use offscreen_gl_context::AndroidSurface;
 use pixels::{self, PixelFormat};
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use webrender_traits::{WebrenderExternalImageRegistry, WebrenderImageHandlerType};
-
 /// WebGL Threading API entry point that lives in the constellation.
 /// It allows to get a WebGLThread handle for each script pipeline.
 pub use crate::webgl_mode::WebGLThreads;
@@ -213,6 +214,7 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
     }
 
     /// Swap the underlying IOsurfaces upon requestAnimationFrame is called
+    #[cfg(target_os = "macos")]
     fn swap_draw_buffers(&mut self, sender: WebGLSender<()>) {
         for (context_id, ref mut data) in self.contexts.iter_mut() {
             let info = self.cached_context_info.get_mut(&context_id).unwrap();
@@ -222,6 +224,26 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
                     self.bound_context_id = Some(*context_id);
                 }
                 info.io_surface_id = data
+                    .ctx
+                    .swap_draw_buffer(data.state.clear_color, data.state.clear_mask);
+            }
+            info.received_webgl_command = false;
+            info.has_request_animation = true;
+        }
+        sender.send(()).unwrap();
+    }
+
+    /// Swap the underlying IOsurfaces upon requestAnimationFrame is called
+    #[cfg(target_os = "android")]
+    fn swap_draw_buffers(&mut self, sender: WebGLSender<()>) {
+        for (context_id, ref mut data) in self.contexts.iter_mut() {
+            let info = self.cached_context_info.get_mut(&context_id).unwrap();
+            if info.received_webgl_command {
+                if Some(*context_id) != self.bound_context_id {
+                    data.ctx.make_current();
+                    self.bound_context_id = Some(*context_id);
+                }
+                info.android_surface = data
                     .ctx
                     .swap_draw_buffer(data.state.clear_color, data.state.clear_mask);
             }
@@ -277,7 +299,10 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
             .send(WebGLLockMessage {
                 texture_id: info.texture_id,
                 size: info.size,
+                #[cfg(target_os = "macos")]
                 io_surface_id: info.io_surface_id,
+                #[cfg(target_os = "android")]
+                android_surface: info.android_surface,
                 gl_sync: gl_sync as usize,
                 alpha: info.alpha,
             })
@@ -321,7 +346,10 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
             #[cfg(target_os = "android")]
             { info.android_surface = data.ctx.get_active_android_surface(); }
         } else {
-            info.io_surface_id = data.ctx.handle_lock();
+            #[cfg(target_os = "macos")]
+            { info.io_surface_id = data.ctx.handle_lock(); }
+            #[cfg(target_os = "android")]
+            { info.android_surface = data.ctx.handle_lock(); }
         }
         (info, gl_sync as usize)
     }
@@ -373,7 +401,10 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
                 .next_id(WebrenderImageHandlerType::WebGL)
                 .0 as usize,
         );
+        #[cfg(target_os = "macos")]
         let (size, texture_id, io_surface_id, limits) = ctx.get_info();
+        #[cfg(target_os = "android")]
+        let (size, texture_id, android_surface, limits) = ctx.get_info();
         self.contexts.insert(
             id,
             GLContextData {
@@ -391,7 +422,10 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
                 share_mode,
                 gl_sync: None,
                 render_state: ContextRenderState::Unlocked,
+                #[cfg(target_os = "macos")]
                 io_surface_id,
+                #[cfg(target_os = "android")]
+                android_surface,
                 has_request_animation: false,
                 received_webgl_command: false,
             },
@@ -415,7 +449,11 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
         .expect("Missing WebGL context!");
         match data.ctx.resize(size) {
             Ok(old_draw_buffer) => {
+                #[cfg(target_os = "macos")]
                 let (real_size, texture_id, surface_id, _) = data.ctx.get_info();
+                #[cfg(target_os = "android")]
+                let (real_size, texture_id, android_surface, _) = data.ctx.get_info();
+
                 let info = self.cached_context_info.get_mut(&context_id).unwrap();
                 if let ContextRenderState::Locked(ref mut in_use) = info.render_state {
                     // If there's already an outdated draw buffer present, we can ignore
@@ -430,7 +468,10 @@ impl<VR: WebVRRenderHandler + 'static> WebGLThread<VR> {
                 // Update webgl texture size. Texture id may change too.
                 info.texture_id = texture_id;
                 info.size = real_size;
-                info.io_surface_id = surface_id;
+                #[cfg(target_os = "macos")]
+                { info.io_surface_id = surface_id; }
+                #[cfg(target_os = "android")]
+                { info.android_surface = android_surface; }
                 // Update WR image if needed. Resize image updates are only required for SharedTexture mode.
                 // Readback mode already updates the image every frame to send the raw pixels.
                 // See `handle_update_wr_image`.
@@ -829,7 +870,11 @@ struct WebGLContextInfo {
     /// The status of this context with respect to external consumers.
     render_state: ContextRenderState,
     /// The ID of the IOSurface which we can send to the WR thread
+    #[cfg(target_os = "macos")]
     io_surface_id: Option<u32>,
+    ///
+    #[cfg(target_os = "android")]
+    android_surface: Option<AndroidSurface>,
     /// True if the context has requestAnimationFrame call
     has_request_animation: bool,
     /// True if the context received a WebGLCommand between two requestAnimationFrame
@@ -838,7 +883,13 @@ struct WebGLContextInfo {
 
 impl WebGLContextInfo {
     fn texture_target(&self) -> webrender_api::TextureTarget {
+        #[cfg(target_os = "macos")]
         match self.io_surface_id {
+            Some(_) => webrender_api::TextureTarget::Rect,
+            None => webrender_api::TextureTarget::Default,
+        }
+        #[cfg(target_os = "android")]
+        match self.android_surface {
             Some(_) => webrender_api::TextureTarget::Rect,
             None => webrender_api::TextureTarget::Default,
         }
