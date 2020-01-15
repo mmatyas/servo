@@ -5282,9 +5282,7 @@ dependencies = [
 
 [[package]]
 name = "sparkle"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ca7ee308d5e35a3b71728e17250778cf589a92ec56196e84380def310804309"
+version = "0.1.15"
 dependencies = [
  "gl_generator 0.13.1",
 ]

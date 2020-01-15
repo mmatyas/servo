@@ -145,6 +145,13 @@ bitflags! {
     }
 }
 
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf)]
+pub enum VertexAttrib {
+    Float(f32, f32, f32, f32),
+    Int(i32, i32, i32, i32),
+    Uint(u32, u32, u32, u32),
+}
+
 #[dom_struct]
 pub struct WebGLRenderingContext {
     reflector_: Reflector,
@@ -168,8 +175,7 @@ pub struct WebGLRenderingContext {
     bound_buffer_array: MutNullableDom<WebGLBuffer>,
     current_program: MutNullableDom<WebGLProgram>,
     /// https://www.khronos.org/webgl/wiki/WebGL_and_OpenGL_Differences#Vertex_Attribute_0
-    #[ignore_malloc_size_of = "Because it's small"]
-    current_vertex_attrib_0: Cell<(f32, f32, f32, f32)>,
+    current_vertex_attrib_0: Cell<VertexAttrib>,
     #[ignore_malloc_size_of = "Because it's small"]
     current_scissor: Cell<(i32, i32, u32, u32)>,
     #[ignore_malloc_size_of = "Because it's small"]
@@ -227,7 +233,7 @@ impl WebGLRenderingContext {
                 bound_buffer_array: MutNullableDom::new(None),
                 bound_renderbuffer: MutNullableDom::new(None),
                 current_program: MutNullableDom::new(None),
-                current_vertex_attrib_0: Cell::new((0f32, 0f32, 0f32, 1f32)),
+                current_vertex_attrib_0: Cell::new(VertexAttrib::Float(0f32, 0f32, 0f32, 1f32)),
                 current_scissor: Cell::new((0, 0, size.width, size.height)),
                 // FIXME(#21718) The backend is allowed to choose a size smaller than
                 // what was requested
@@ -496,7 +502,7 @@ impl WebGLRenderingContext {
         }
 
         if indx == 0 {
-            self.current_vertex_attrib_0.set((x, y, z, w))
+            self.current_vertex_attrib_0.set(VertexAttrib::Float(x, y, z, w))
         }
 
         self.send_command(WebGLCommand::VertexAttrib(indx, x, y, z, w));
@@ -1254,6 +1260,10 @@ impl WebGLRenderingContext {
         }
 
         Ok(())
+    }
+
+    pub fn current_vertex_attrib(&self) -> &Cell<VertexAttrib> {
+        &self.current_vertex_attrib_0
     }
 }
 
@@ -2772,8 +2782,13 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
         );
         if param == constants::CURRENT_VERTEX_ATTRIB {
             let value = if index == 0 {
-                let (x, y, z, w) = self.current_vertex_attrib_0.get();
-                [x, y, z, w]
+                match self.current_vertex_attrib_0.get() {
+                    VertexAttrib::Float(x, y, z, w) => [x, y, z, w],
+                    _ => {
+                        self.webgl_error(WebGLError::InvalidOperation);
+                        return NullValue();
+                    },
+                }
             } else {
                 let (sender, receiver) = webgl_channel().unwrap();
                 self.send_command(WebGLCommand::GetCurrentVertexAttrib(index, sender));

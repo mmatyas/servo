@@ -1347,6 +1347,12 @@ impl WebGLImpl {
             WebGLCommand::VertexAttrib(attrib_id, x, y, z, w) => {
                 gl.vertex_attrib_4f(attrib_id, x, y, z, w)
             },
+            WebGLCommand::VertexAttribI(attrib_id, x, y, z, w) => {
+                gl.vertex_attrib_4i(attrib_id, x, y, z, w)
+            },
+            WebGLCommand::VertexAttribU(attrib_id, x, y, z, w) => {
+                gl.vertex_attrib_4ui(attrib_id, x, y, z, w)
+            },
             WebGLCommand::VertexAttribPointer2f(attrib_id, size, normalized, stride, offset) => {
                 gl.vertex_attrib_pointer_f32(attrib_id, size, normalized, stride, offset)
             },
