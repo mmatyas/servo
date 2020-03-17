@@ -342,7 +342,7 @@ impl WebGL2RenderingContext {
         dst: &mut ArrayBufferView,
         dst_elem_offset: u32,
     ) {
-        handle_potential_webgl_error!(self.base, self.base.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self.base, self.base.validate_draw_framebuffer(), return);
 
         if self.bound_pixel_pack_buffer.get().is_some() {
             return self.base.webgl_error(InvalidOperation);
@@ -1779,7 +1779,7 @@ impl WebGL2RenderingContextMethods for WebGL2RenderingContext {
         pixel_type: u32,
         dst_byte_offset: i64,
     ) {
-        handle_potential_webgl_error!(self.base, self.base.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self.base, self.base.validate_draw_framebuffer(), return);
 
         let dst = match self.bound_pixel_pack_buffer.get() {
             Some(buffer) => buffer,
@@ -3879,6 +3879,42 @@ impl WebGL2RenderingContextMethods for WebGL2RenderingContext {
             self.default_fb_drawbuffer.set(buffers[0]);
             self.base.send_command(WebGLCommand::DrawBuffers(buffers));
         }
+    }
+
+    fn BlitFramebuffer(
+        &self,
+        src_x0: i32,
+        src_y0: i32,
+        src_x1: i32,
+        src_y1: i32,
+        dst_x0: i32,
+        dst_y0: i32,
+        dst_x1: i32,
+        dst_y1: i32,
+        mask: u32,
+        filter: u32,
+    ) {
+        match filter {
+            constants::NEAREST | constants::LINEAR => {},
+            _ => return self.base.webgl_error(InvalidEnum),
+        }
+
+        let depthstencil_bits = mask & (constants::DEPTH_BUFFER_BIT | constants::STENCIL_BUFFER_BIT);
+        if depthstencil_bits > 0 && filter != constants::NEAREST {
+            return self.base.webgl_error(InvalidOperation);
+        }
+
+
+        handle_potential_webgl_error!(
+            self.base,
+            self.base.validate_framebuffer(self.base.get_read_framebuffer_slot()),
+            return
+        );
+        handle_potential_webgl_error!(
+            self.base,
+            self.base.validate_framebuffer(self.base.get_draw_framebuffer_slot()),
+            return
+        );
     }
 }
 

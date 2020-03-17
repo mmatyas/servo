@@ -408,6 +408,17 @@ impl WebGLRenderingContext {
         }
     }
 
+    pub fn validate_framebuffer(&self, slot: &MutNullableDom<WebGLFramebuffer>) -> WebGLResult<()> {
+        match slot.get() {
+            Some(fb) => match fb.check_status_for_rendering() {
+                CompleteForRendering::Complete => Ok(()),
+                CompleteForRendering::Incomplete => Err(InvalidFramebufferOperation),
+                CompleteForRendering::MissingColorAttachment => Err(InvalidOperation),
+            },
+            None => Ok(()),
+        }
+    }
+
     // Helper function for validating framebuffer completeness in
     // calls touching the framebuffer.  From the GLES 2.0.25 spec,
     // page 119:
@@ -426,15 +437,8 @@ impl WebGLRenderingContext {
     //
     // The WebGL spec mentions a couple more operations that trigger
     // this: clear() and getParameter(IMPLEMENTATION_COLOR_READ_*).
-    pub fn validate_framebuffer(&self) -> WebGLResult<()> {
-        match self.bound_draw_framebuffer.get() {
-            Some(fb) => match fb.check_status_for_rendering() {
-                CompleteForRendering::Complete => Ok(()),
-                CompleteForRendering::Incomplete => Err(InvalidFramebufferOperation),
-                CompleteForRendering::MissingColorAttachment => Err(InvalidOperation),
-            },
-            None => Ok(()),
-        }
+    pub fn validate_draw_framebuffer(&self) -> WebGLResult<()> {
+        self.validate_framebuffer(&self.bound_draw_framebuffer)
     }
 
     pub fn validate_ownership<T>(&self, object: &T) -> WebGLResult<()>
@@ -918,7 +922,7 @@ impl WebGLRenderingContext {
             )?,
         };
 
-        self.validate_framebuffer()?;
+        self.validate_draw_framebuffer()?;
 
         if count == 0 || primcount == 0 {
             return Ok(());
@@ -1001,7 +1005,7 @@ impl WebGLRenderingContext {
             )?,
         };
 
-        self.validate_framebuffer()?;
+        self.validate_draw_framebuffer()?;
 
         if count == 0 || primcount == 0 {
             return Ok(());
@@ -1049,7 +1053,7 @@ impl WebGLRenderingContext {
     //
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#2.2
     pub fn get_image_data(&self, mut size: Size2D<u32>) -> Option<Vec<u8>> {
-        handle_potential_webgl_error!(self, self.validate_framebuffer(), return None);
+        handle_potential_webgl_error!(self, self.validate_draw_framebuffer(), return None);
 
         let (fb_width, fb_height) = handle_potential_webgl_error!(
             self,
@@ -1650,14 +1654,14 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
             // GL_OES_read_format support (assuming an underlying GLES
             // driver. Desktop is happy to format convert for us).
             constants::IMPLEMENTATION_COLOR_READ_FORMAT => {
-                if self.validate_framebuffer().is_err() {
+                if self.validate_draw_framebuffer().is_err() {
                     self.webgl_error(InvalidOperation);
                     return NullValue();
                 }
                 return Int32Value(constants::RGBA as i32);
             },
             constants::IMPLEMENTATION_COLOR_READ_TYPE => {
-                if self.validate_framebuffer().is_err() {
+                if self.validate_draw_framebuffer().is_err() {
                     self.webgl_error(InvalidOperation);
                     return NullValue();
                 }
@@ -2237,7 +2241,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
         height: i32,
         border: i32,
     ) {
-        handle_potential_webgl_error!(self, self.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self, self.validate_draw_framebuffer(), return);
 
         let validator = CommonTexImage2DValidator::new(
             self,
@@ -2342,7 +2346,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
         width: i32,
         height: i32,
     ) {
-        handle_potential_webgl_error!(self, self.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self, self.validate_draw_framebuffer(), return);
 
         // NB: We use a dummy (valid) format and border in order to reuse the
         // common validations, but this should have its own validator.
@@ -2401,7 +2405,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
 
     // https://www.khronos.org/registry/webgl/specs/latest/1.0/#5.14.11
     fn Clear(&self, mask: u32) {
-        handle_potential_webgl_error!(self, self.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self, self.validate_draw_framebuffer(), return);
         if mask &
             !(constants::DEPTH_BUFFER_BIT |
                 constants::STENCIL_BUFFER_BIT |
@@ -3258,7 +3262,7 @@ impl WebGLRenderingContextMethods for WebGLRenderingContext {
         pixel_type: u32,
         mut pixels: CustomAutoRooterGuard<Option<ArrayBufferView>>,
     ) {
-        handle_potential_webgl_error!(self, self.validate_framebuffer(), return);
+        handle_potential_webgl_error!(self, self.validate_draw_framebuffer(), return);
 
         let pixels =
             handle_potential_webgl_error!(self, pixels.as_mut().ok_or(InvalidValue), return);
